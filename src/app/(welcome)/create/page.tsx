@@ -1,7 +1,8 @@
 "use client";
 
 import instance from "@/app/axios-instance";
-import { Button, Card, TextField, Typography } from "@mui/material";
+import { Button, Card, Snackbar, TextField, Typography } from "@mui/material";
+import { AxiosError } from "axios";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -9,19 +10,29 @@ export default function Create() {
   const [name, setName] = useState<string>("");
   const [username, setUsername] = useState<string>("");
   const [target, setTarget] = useState<number>(1000);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   const createTable = async () => {
-    const res = await instance.post("/create-table", {
-      name,
-      username,
-      target,
-    });
-    if (res.status === 201) {
-      console.log(res.data);
-      localStorage.setItem("username", res.data.data.party_owner.name);
-      localStorage.setItem("user_id", res.data.data.party_owner.id);
-      router.push(`/game/${res.data.data.id}`);
+    try {
+      const res = await instance.post("/create-table", {
+        name,
+        username,
+        target,
+      });
+      if (res.status === 201) {
+        console.log(res.data);
+        localStorage.setItem("username", res.data.data.party_owner.name);
+        localStorage.setItem("user_id", res.data.data.party_owner.id);
+        router.push(`/game/${res.data.data.id}`);
+      }
+    } catch (error) {
+      const err = error as AxiosError;
+      if (err.response?.status === 400) {
+        setError("Table name already exists");
+      } else {
+        setError("Something went wrong");
+      }
     }
   };
 
@@ -73,6 +84,24 @@ export default function Create() {
       >
         Create Table
       </Button>
+      <Typography variant="button">OR</Typography>
+      <Button
+        fullWidth
+        variant="outlined"
+        color="inherit"
+        onClick={() => {
+          router.push("/join");
+        }}
+      >
+        Join Existing Table
+      </Button>
+      <Snackbar
+        open={!!error}
+        autoHideDuration={5000}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+        onClose={() => setError(null)}
+        message={error}
+      />
     </Card>
   );
 }
