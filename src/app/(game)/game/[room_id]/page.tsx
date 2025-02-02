@@ -1,136 +1,217 @@
 "use client";
 
-import cards from "./cards";
-import Image from "next/image";
 import { useEffect, useState } from "react";
-import { Button } from "@mui/material";
+import GameHeader from "./header";
+import { useParams, useRouter } from "next/navigation";
+import { io, Socket } from "socket.io-client";
+import Game from "./game";
+import Chats from "./chats";
 
-import {
-  DndContext,
-  closestCenter,
-  useSensor,
-  useSensors,
-  PointerSensor,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  horizontalListSortingStrategy,
-  arrayMove,
-  useSortable,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+export default function GameLayout() {
+  const router = useRouter();
+  const { room_id } = useParams();
+  const [feedback, setFeedback] = useState<string[]>([]);
 
-export default function Game() {
-  const [hands, setHands] = useState<{
-    [key: number]: string[];
-  }>([]);
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [transport, setTransport] = useState("N/A");
+  const [hand, setHand] = useState<string[]>([]);
+  const [ready, setReady] = useState(false);
 
-  const [items, setItems] = useState<string[]>([]);
-
-  function shuffle() {
-    const keys = Object.keys(cards);
-    const shuffled = keys.sort(() => Math.random() - 0.5);
-    return shuffled;
+  const [name, setName] = useState("");
+  const [players, setPlayers] = useState<
+    {
+      id: number;
+      name: string;
+      admin?: boolean;
+      me?: boolean;
+      made_cards: string[];
+      cards: [];
+    }[]
+  >([]);
+  const [round, setRound] = useState(0);
+  const [playing_round, setPlayingRound] = useState<{
+    RoundCards: {
+      player: { id: number; name: string };
+      made_cards: string[];
+      cards: string[];
+    }[];
+    round: number;
+    status: string;
+  } | null>(null);
+  if (transport) {
+    console.log("Connected with", transport);
   }
 
-  function deal() {
-    const deck = shuffle();
+  const startGame = () => {
+    if (socket) socket?.emit(`distribute-cards`);
+    else console.log("socket not connected");
+  };
 
-    // distribute 13 cards to each player
-    // eslint-disable-next-line prefer-const
-    let temp_hands: { [key: number]: string[] } = {
-      0: [],
-      1: [],
-      2: [],
-      3: [],
-    };
-    deck?.map((card, index) => {
-      const player = index % 4;
-      if (!temp_hands[player]) {
-        temp_hands[player] = [];
-      }
-      temp_hands[player].push(card);
-    });
-    setHands(temp_hands);
-  }
-
-  const sensors = useSensors(useSensor(PointerSensor, {}));
+  const commitCards = (cards: string[]) => {
+    if (socket) socket?.emit(`play-card`, { cards });
+    else console.log("socket not connected");
+  };
 
   useEffect(() => {
-    setItems(hands[0]);
-  }, [hands]);
+    const username = localStorage.getItem("username");
+    const user_id = localStorage.getItem("user_id");
+    if (!username || !user_id) {
+      router.replace("/");
+    }
+
+    const socket = io(process.env.NEXT_PUBLIC_API_URL as string, {
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      extraHeaders: {
+        user_id: user_id || "",
+        username: username || "",
+        table_id: room_id as string,
+      },
+    });
+
+    if (socket.connected) {
+      onConnect();
+    }
+
+    function onConnect() {
+      setIsConnected(true);
+
+      setSocket(socket);
+
+      setTransport(socket.io.engine.transport.name);
+
+      socket.io.engine.on("upgrade", (transport) => {
+        setTransport(transport.name);
+      });
+    }
+
+    function onDisconnect() {
+      setIsConnected(false);
+      setTransport("N/A");
+    }
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+
+    socket.on(`feedback`, (data) => {
+      console.log("[feedback] :", data);
+      setFeedback((f) => [...f, data]);
+    });
+
+    socket.on(`table_${room_id}_feedback`, (data) => {
+      console.log("[feedback] :", data);
+      setFeedback((f) => [...f, data]);
+    });
+
+    socket.on(`table_${room_id}_updates`, (data) => {
+      console.log("tbl_updts", data);
+      setName(data.name);
+      setPlayers(
+        data.players.map(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (p: any) =>
+            ({
+              ...p,
+              admin: p.id === data.party_owner_id,
+              me: p.id === parseInt(user_id || "0"),
+              made_cards: [],
+              cards: [],
+            } as {
+              id: number;
+              name: string;
+              admin?: boolean;
+              me?: boolean;
+              made_cards: string[];
+              cards: [];
+            })
+        )
+      );
+      setRound(data.round);
+
+      if (data?.playing_round) {
+        setPlayingRound(data.playing_round);
+        // set made_cards and cards on all player state as well
+      }
+    });
+
+    // socket.on(`table_${room_id}_cards`, (data) => {
+    //   console.log("tbl_crds", data);
+    // });
+
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const user_id = localStorage.getItem("user_id");
+    if (!playing_round || !players.length) return;
+    setPlayers((p) =>
+      p.map(
+        (pl) =>
+          ({
+            ...pl,
+            made_cards:
+              playing_round?.RoundCards.filter((x) => x.player.id === pl.id)[0]
+                ?.made_cards || [],
+            cards:
+              playing_round?.RoundCards.filter((x) => x.player.id === pl.id)[0]
+                ?.made_cards || [],
+          } as {
+            id: number;
+            name: string;
+            admin?: boolean;
+            me?: boolean;
+            made_cards: string[];
+            cards: [];
+          })
+      )
+    );
+
+    const my_hand = playing_round?.RoundCards.filter(
+      (x) => x.player.id === parseInt(user_id || "0")
+    )[0];
+
+    if (my_hand) {
+      if (my_hand?.made_cards?.length) {
+        setReady(true);
+      }
+      setHand(
+        !!my_hand?.made_cards?.length ? my_hand?.made_cards : my_hand?.cards
+      );
+    }
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing_round]);
 
   return (
     <>
-      <Button
-        variant="contained"
-        color="info"
-        className="!m-5"
-        onClick={() => {
-          deal();
-        }}
-      >
-        Shuffle
-      </Button>
-
-      {!!items?.length && (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={items}
-            strategy={horizontalListSortingStrategy}
-          >
-            <div
-              style={{
-                position: "absolute",
-                bottom: "20px",
-                left: "50%",
-                transform: "translateX(-50%)",
-                width: "100vw",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "5px",
-                padding: "20px",
-              }}
-            >
-              {items.map((id) => (
-                <SortableItem key={id} id={id} />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+      {isConnected ? (
+        <main className="bg-[url(/bg-table.jpg)] h-svh w-svw bg-cover p-10 bg-center overflow-hidden">
+          <GameHeader name={name} players={players} />
+          <Game
+            round={round}
+            players={players}
+            admin={!!players?.filter((p) => p.admin && p.me)?.length}
+            hand={hand}
+            startGame={startGame}
+            commitCards={commitCards}
+            ready={ready}
+          />
+          <Chats messages={feedback} />
+        </main>
+      ) : (
+        // loading
+        <main className="bg-[url(/bg-table.jpg)] h-svh w-svw bg-cover p-10 bg-center">
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center p-10 bg-slate-800/30 text-white rounded-lg">
+            <h1 className="text-3xl font-bold">Connecting...</h1>
+          </div>
+        </main>
       )}
     </>
   );
-
-  function SortableItem({ id }: { id: string }) {
-    const { attributes, listeners, setNodeRef, transform, transition } =
-      useSortable({ id });
-
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition,
-      cursor: "grab",
-    };
-
-    return (
-      <div ref={setNodeRef} {...attributes} {...listeners} style={style}>
-        <Image src={`/cards/${id}.svg`} alt={id} width={100} height={150} />
-      </div>
-    );
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function handleDragEnd(event: any) {
-    const { active, over } = event;
-    if (active.id !== over.id) {
-      const oldIndex = items.indexOf(active.id);
-      const newIndex = items.indexOf(over.id);
-      setItems(arrayMove(items, oldIndex, newIndex));
-    }
-  }
 }

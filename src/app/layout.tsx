@@ -26,7 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${fontSans.className} antialiased`}>
+      <body className={`${fontSans.className} antialiased overflow-hidden`}>
         <AppRouterCacheProvider>
           <ThemeProvider theme={muiTheme}>{children}</ThemeProvider>
         </AppRouterCacheProvider>

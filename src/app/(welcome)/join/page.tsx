@@ -50,7 +50,7 @@ export default function Join() {
         label="Table ID"
         size="small"
         variant="outlined"
-        value={table || NaN}
+        value={table || ""}
         required
         onChange={(e) => {
           if (e.target.value) setTable(parseInt(e.target.value));

@@ -1,4 +1,11 @@
-const cards = {
+const cards: {
+  [key: string]: {
+    name: string;
+    value: number;
+    point: number;
+    type: string;
+  };
+} = {
   c2: {
     name: "2",
     value: 2,
