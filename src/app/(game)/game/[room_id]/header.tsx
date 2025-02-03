@@ -4,7 +4,6 @@ import { Button, IconButton, Snackbar } from "@mui/material";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { RiStackshareLine } from "react-icons/ri";
-import Link from "next/link";
 
 interface GameHeaderProps {
   name: string;
