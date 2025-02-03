@@ -9,7 +9,7 @@ services:
     image: hazari-web:v1
     container_name: hazari-web
     ports:
-      - "3000:3000"
+      - "3210:3000"
     environment:
       - NODE_ENV=production
     restart: unless-stopped
