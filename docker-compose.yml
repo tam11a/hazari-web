@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  production:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner # Use the 'runner' stage from Dockerfile for production
+    image: hazari-web:v1
+    container_name: hazari-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
