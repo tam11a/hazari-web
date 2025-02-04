@@ -29,12 +29,29 @@ interface GameProps {
     points?: number;
     made_cards: string[];
     cards: string[];
+    thrown?: string[];
+    next_to_play?: boolean;
+    scores: {
+      value: number;
+    }[];
   }[];
   ready: boolean;
   admin?: boolean;
   hand: string[];
+  user_id: number;
+  playing_round?: {
+    RoundCards: {
+      player: { id: number; name: string };
+      made_cards: string[];
+      cards: string[];
+      thrown: string[];
+    }[];
+    round: number;
+    status: string;
+  } | null;
   startGame: () => void;
   commitCards: (cards: string[]) => void;
+  throwCards: (cards: string[]) => void;
 }
 
 export default function Game({
@@ -44,11 +61,31 @@ export default function Game({
   startGame,
   hand,
   commitCards,
+  throwCards,
+  user_id,
   ready = false,
+  playing_round,
 }: Readonly<GameProps>) {
+  const next_to_play = useMemo(
+    () => players.find((p) => p.next_to_play),
+    [players]
+  );
+
   console.log("players", players);
 
   const [items, setItems] = useState<string[]>([]);
+
+  const throwFirstThreeFromItems = () => {
+    // throw the last cards if there are only 4 cards in items
+    if (items.length === 4) {
+      throwCards(items.slice(0, 4));
+      setItems(items.slice(4));
+    } else {
+      // send first 3 cards to throw from items and remove them from items.
+      throwCards(items.slice(0, 3));
+      setItems(items.slice(3));
+    }
+  };
 
   useEffect(() => {
     if (hand.length && !items.length) setItems(hand);
@@ -65,6 +102,8 @@ export default function Game({
     }
     return tbl;
   }, [players]);
+
+  console.log(players, next_to_play?.id === user_id, next_to_play?.id, user_id);
 
   const sensors = useSensors(useSensor(PointerSensor, {}));
 
@@ -93,6 +132,28 @@ export default function Game({
           )}
         </div>
       )}
+
+      {round !== 0 && playing_round === null ? (
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center p-10 bg-slate-800/30 text-white rounded-lg">
+          {admin ? (
+            <>
+              <p>Start Round # {round + 1}</p>
+              <Button
+                variant="contained"
+                color="primary"
+                className="!m-5 !mb-0 !rounded-full"
+                onClick={() => {
+                  startGame();
+                }}
+              >
+                Distribute Cards
+              </Button>
+            </>
+          ) : (
+            <p>Waiting for admin to distribute cards.</p>
+          )}
+        </div>
+      ) : null}
 
       {
         // render players on round table in order from bottom-middle, right-middle, top-middle, left-middle
@@ -125,21 +186,34 @@ export default function Game({
                 <div className="text-white flex flex-row items-center">
                   {player.name}
                   <p>{player.me && " (You)"}</p>
-                  {!!player.made_cards?.length && (
+                  {!next_to_play && !!player.made_cards?.length ? (
                     <Chip
-                      label="Ready"
+                      label="Locked"
                       size="small"
+                      variant="outlined"
                       color="error"
-                      className="ml-3 text-xs"
+                      className="ml-3 !bg-red-950 text-xs"
                     />
-                  )}
+                  ) : player.next_to_play ? (
+                    <Chip
+                      label="Playing"
+                      size="small"
+                      variant="outlined"
+                      color="primary"
+                      className="ml-3 !bg-lime-300 text-xs"
+                    />
+                  ) : null}
                 </div>
                 <p className="text-white text-xs pt-1">
                   {player.admin ? "Admin" : "Player"}{" "}
-                  {player.points ? ` (${player.points} pts)` : ` (0 pts)`}
+                  {` (${player.scores?.reduce(
+                    (prev: number, data) => data.value + prev,
+                    0
+                  )} pts)`}
                 </p>
               </div>
             </div>
+
             {/* Render player cards */}
             {!player.me && hand?.length ? (
               <div className="flex gap-0 absolute bottom-0 translate-y-full pt-2">
@@ -159,6 +233,34 @@ export default function Game({
                       />
                     </div>
                   ))}
+              </div>
+            ) : null}
+
+            {/* Render thrown cards */}
+            {player.thrown?.length ? (
+              <div
+                className="flex gap-0 absolute justify-center items-center top-0 translate-y-full translate-x-1/3 pt-2 w-full"
+                style={{
+                  transform: player.me ? `translateY(calc(-100% - 250px))` : ``,
+                }}
+              >
+                {player.thrown.map((card, i) => (
+                  <div
+                    key={i}
+                    className="bg-white overflow-hidden rounded-md w-20 shadow shadow-black -ml-16"
+                    style={{
+                      transform: `rotate(${i * 10}deg)`,
+                    }}
+                  >
+                    <Image
+                      src={`/cards/${card}.svg`}
+                      alt={card}
+                      width={100}
+                      height={150}
+                      priority
+                    />
+                  </div>
+                ))}
               </div>
             ) : null}
           </div>
@@ -190,7 +292,7 @@ export default function Game({
                 gap: "5px",
               }}
             >
-              <div>
+              <div className="space-x-2">
                 {!ready && (
                   <Button
                     variant="outlined"
@@ -203,6 +305,21 @@ export default function Game({
                     Lock Cards
                   </Button>
                 )}
+                {
+                  // if it's your turn and you have more than 3 cards, show throw button
+                  !!next_to_play &&
+                  next_to_play?.id === user_id &&
+                  items.length >= 3 ? (
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      className="!rounded-full !bg-red-950"
+                      onClick={throwFirstThreeFromItems}
+                    >
+                      Throw
+                    </Button>
+                  ) : null
+                }
               </div>
               <div
                 style={{
@@ -233,6 +350,7 @@ export default function Game({
       transform: CSS.Transform.toString(transform),
       transition,
       cursor: "grab",
+      // marginLeft: "-50px",
     };
 
     return (

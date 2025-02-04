@@ -19,6 +19,9 @@ export default function GameLayout() {
   const [ready, setReady] = useState(false);
 
   const [name, setName] = useState("");
+  const [user_id, setUserId] = useState(0);
+  const [next_to_play, setNextToPlay] = useState<number | null>(null);
+
   const [players, setPlayers] = useState<
     {
       id: number;
@@ -27,6 +30,11 @@ export default function GameLayout() {
       me?: boolean;
       made_cards: string[];
       cards: [];
+      thrown?: string[];
+      next_to_play?: boolean;
+      scores: {
+        value: number;
+      }[];
     }[]
   >([]);
   const [round, setRound] = useState(0);
@@ -35,6 +43,7 @@ export default function GameLayout() {
       player: { id: number; name: string };
       made_cards: string[];
       cards: string[];
+      thrown: string[];
     }[];
     round: number;
     status: string;
@@ -53,12 +62,19 @@ export default function GameLayout() {
     else console.log("socket not connected");
   };
 
+  const throwCards = (cards: string[]) => {
+    if (socket) socket?.emit(`throw-cards`, { cards });
+    else console.log("socket not connected");
+  };
+
   useEffect(() => {
     const username = localStorage.getItem("username");
     const user_id = localStorage.getItem("user_id");
     if (!username || !user_id) {
       router.replace("/");
     }
+
+    setUserId(parseInt(user_id || "0"));
 
     const socket = io(process.env.NEXT_PUBLIC_API_URL as string, {
       autoConnect: true,
@@ -108,6 +124,7 @@ export default function GameLayout() {
     socket.on(`table_${room_id}_updates`, (data) => {
       console.log("tbl_updts", data);
       setName(data.name);
+      setNextToPlay(data.next_to_play?.id || null);
       setPlayers(
         data.players.map(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -116,8 +133,23 @@ export default function GameLayout() {
               ...p,
               admin: p.id === data.party_owner_id,
               me: p.id === parseInt(user_id || "0"),
-              made_cards: [],
-              cards: [],
+              made_cards:
+                data.playing_round?.RoundCards.filter(
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (x: any) => x.player.id === p.id
+                )[0]?.made_cards || [],
+              cards:
+                data.playing_round?.RoundCards.filter(
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (x: any) => x.player.id === p.id
+                )[0]?.cards || [],
+              thrown:
+                data.playing_round?.RoundCards.filter(
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (x: any) => x.player.id === p.id
+                )[0]?.thrown || [],
+              next_to_play: data.next_to_play === p.id,
+              scores: p.scores || [],
             } as {
               id: number;
               name: string;
@@ -125,6 +157,11 @@ export default function GameLayout() {
               me?: boolean;
               made_cards: string[];
               cards: [];
+              thrown: [];
+              next_to_play: boolean;
+              scores: {
+                value: number;
+              }[];
             })
         )
       );
@@ -133,6 +170,8 @@ export default function GameLayout() {
       if (data?.playing_round) {
         setPlayingRound(data.playing_round);
         // set made_cards and cards on all player state as well
+      } else {
+        setPlayingRound(null);
       }
     });
 
@@ -150,6 +189,7 @@ export default function GameLayout() {
   useEffect(() => {
     const user_id = localStorage.getItem("user_id");
     if (!playing_round || !players.length) return;
+
     setPlayers((p) =>
       p.map(
         (pl) =>
@@ -161,6 +201,10 @@ export default function GameLayout() {
             cards:
               playing_round?.RoundCards.filter((x) => x.player.id === pl.id)[0]
                 ?.made_cards || [],
+            thrown:
+              playing_round?.RoundCards.filter((x) => x.player.id === pl.id)[0]
+                ?.thrown || [],
+            next_to_play: next_to_play === pl.id || null,
           } as {
             id: number;
             name: string;
@@ -168,6 +212,11 @@ export default function GameLayout() {
             me?: boolean;
             made_cards: string[];
             cards: [];
+            thrown: [];
+            next_to_play: boolean;
+            scores: {
+              value: number;
+            }[];
           })
       )
     );
@@ -179,9 +228,13 @@ export default function GameLayout() {
     if (my_hand) {
       if (my_hand?.made_cards?.length) {
         setReady(true);
+      } else {
+        setReady(false);
       }
       setHand(
-        !!my_hand?.made_cards?.length ? my_hand?.made_cards : my_hand?.cards
+        playing_round?.status === "PLAYING" || !!my_hand?.made_cards?.length
+          ? my_hand?.made_cards
+          : my_hand?.cards
       );
     }
 
@@ -201,6 +254,9 @@ export default function GameLayout() {
             startGame={startGame}
             commitCards={commitCards}
             ready={ready}
+            throwCards={throwCards}
+            user_id={user_id}
+            playing_round={playing_round}
           />
           <Chats messages={feedback} />
         </main>
