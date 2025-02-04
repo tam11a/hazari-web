@@ -52,6 +52,8 @@ export default function GameLayout() {
     console.log("Connected with", transport);
   }
 
+  const [winner, setWinner] = useState<string | null>(null);
+
   const startGame = () => {
     if (socket) socket?.emit(`distribute-cards`);
     else console.log("socket not connected");
@@ -125,6 +127,7 @@ export default function GameLayout() {
       console.log("tbl_updts", data);
       setName(data.name);
       setNextToPlay(data.next_to_play?.id || null);
+      setWinner(data.winner?.name || null);
       setPlayers(
         data.players.map(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -246,18 +249,24 @@ export default function GameLayout() {
       {isConnected ? (
         <main className="bg-[url(/bg-table.jpg)] h-svh w-svw bg-cover p-10 bg-center overflow-hidden">
           <GameHeader name={name} players={players} />
-          <Game
-            round={round}
-            players={players}
-            admin={!!players?.filter((p) => p.admin && p.me)?.length}
-            hand={hand}
-            startGame={startGame}
-            commitCards={commitCards}
-            ready={ready}
-            throwCards={throwCards}
-            user_id={user_id}
-            playing_round={playing_round}
-          />
+          {!winner ? (
+            <Game
+              round={round}
+              players={players}
+              admin={!!players?.filter((p) => p.admin && p.me)?.length}
+              hand={hand}
+              startGame={startGame}
+              commitCards={commitCards}
+              ready={ready}
+              throwCards={throwCards}
+              user_id={user_id}
+              playing_round={playing_round}
+            />
+          ) : (
+            <p className="text-white text-2xl absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 shadow-lg bg-slate-800/50 p-5 rounded-lg">
+              🎉 {winner} won the game!!
+            </p>
+          )}
           <Chats messages={feedback} />
         </main>
       ) : (

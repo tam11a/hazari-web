@@ -309,7 +309,8 @@ export default function Game({
                   // if it's your turn and you have more than 3 cards, show throw button
                   !!next_to_play &&
                   next_to_play?.id === user_id &&
-                  items.length >= 3 ? (
+                  items.length >= 3 &&
+                  hand?.length === items.length ? (
                     <Button
                       variant="outlined"
                       color="error"
